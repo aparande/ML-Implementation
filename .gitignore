@@ -1,2 +1,5 @@
 *.txt
 *.csv
+.vscode/
+mnist.py
+*.pkl.gz
