@@ -3,3 +3,5 @@
 .vscode/
 mnist.py
 *.pkl.gz
+__pycache__/
+*.pyc

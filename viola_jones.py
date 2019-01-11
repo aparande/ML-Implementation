@@ -5,6 +5,7 @@ Viola, Paul, and Michael Jones. "Rapid object detection using a boosted cascade 
 import numpy as np
 from neuralnetwork import NeuralNetwork as NN
 import math
+from mnist import load_data
 
 class ViolaJones:
     def __init__(self, feature_num = 10, learning_rate=0.01, regularizer = 0):
@@ -23,16 +24,16 @@ class ViolaJones:
             neg_num: the number of negative samples
         """
         weights = np.zeros((1, len(training_data)))
-        for x in len(training_data):
-            training_data[x][0] = integral_image(training_data[x][0])
+        for x in range(len(training_data)):
+            training_data[x] = (integral_image(training_data[x][0]), training_data[x][1])
             if training_data[x][1] == 1:
-                weights = 1 / (2 * pos_num)
+                weights[0][x] = 1 / (2 * pos_num)
             else:
-                weights = 1 / (2 * neg_num)
+                weights[0][x] = 1 / (2 * neg_num)
 
-        
         for t in range(self.feature_num):
-            weights[t] = np.linalg.norm(weights[t], axis=1)
+            print("Selecting feature #%d" % (t+1))
+            weights[t] = weights[t] / np.linalg.norm(weights[t])
             clf, error, accuracy = self.select_weak(training_data, weights[t])
             beta = error / (1 - error)
             new_weights = np.zeros(weights[t].shape)
@@ -93,6 +94,8 @@ class ViolaJones:
                 while i + w <= width:
                     j = 0
                     while j + h <= height:
+                        if len(classifiers) % 10000:
+                            print("%d classifiers trained" % len(classifiers))
                         #2 rectangle features
                         immediate = RectangleRegion(i, j, w, h).compute_feature
                         right = RectangleRegion(i+w, j, w, h).compute_feature
@@ -160,8 +163,8 @@ def integral_image(image):
     """
     ii = np.zeros(image.shape)
     s = np.zeros(image.shape)
-    for y in len(image):
-        for x in len(image[y]):
+    for y in range(len(image)):
+        for x in range(len(image[y])):
             s[y][x] = s[y-1][x] + ii[y][x] if y-1 >= 0 else ii[y][x]
             ii[y][x] = ii[y][x-1]+s[y][x] if x-1 >= 0 else s[y][x]
     return ii
@@ -179,4 +182,22 @@ def one_hot(length, label):
     e[label] = 1.0
     return e
 
+if __name__ == "__main__":
+    training, validation, test = load_data()
+    training = zip(training[0], training[1])
+    training = [(np.reshape(image, (28, 28)), label) for image, label in training if label == 1 or label == 0]
+    
+    pos_num, neg_num = 0, 0
+    for x, y in training:
+        if y == 1:
+            pos_num += 1
+        else:
+            neg_num += 1
+    clf = ViolaJones()
+    clf.train(training, pos_num, neg_num)
 
+    correct = 0
+    for x, y in training:
+        prediction = clf.classify(x)
+        correct += prediction == y
+    print("Correctly labeled %d out of %d training examples" % correct, len(training))

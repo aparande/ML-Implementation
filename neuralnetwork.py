@@ -97,17 +97,18 @@ class NeuralNetwork:
 
     #Training data will be a tuple containing the feature and the label
     #Test data can be used to evaluate the networks capabilities as it trains
-    def train(self, training_data, batch_size=50, epochs = 100, training_rate = 0.01, test_data = None):
+    def train(self, training_data, batch_size=50, epochs = 100, training_rate = 0.01, test_data = None, verbose=False):
         for x in range(1, epochs):
             random.shuffle(training_data)
             batches = [training_data[i:i+batch_size] for i in range(0, len(training_data), batch_size)]
             for batch in batches:
                 self.training_step(batch, training_rate, len(training_data))
 
-            if test_data:
-                print ("Epoch {0} complete: {1} correct out of {2}".format(x, self.evaluate(test_data), len(test_data)))
-            else:
-                print ("Epoch {0} complete".format(x))
+            if verbose:
+                if test_data:
+                    print ("Epoch {0} complete: {1} correct out of {2}".format(x, self.evaluate(test_data), len(test_data)))
+                else:
+                    print ("Epoch {0} complete".format(x))
 
     #Return the number of test inputs that the network correctly classifies
     def evaluate(self, test_data):
