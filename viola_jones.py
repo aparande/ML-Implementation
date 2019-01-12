@@ -56,18 +56,17 @@ class ViolaJones:
           Returns:
             An array of weak classifiers
         """
-        def create_weak(feature):
+        def create_weak(positive_regions, negative_regions):
             """
             Trains a weak classifier on the feature
               Args:
-                feature: A single argument lambda which takes in an integral image and computes the feature
+                positive_regions: Rectangle regions which contribute positively to the feature
+                negative_regions: Rectangle regions which contribute negatively to the feature
               Returns:
                 The weak classifier
             """
-            training = map(lambda data: (feature(data[0]), one_hot(2, data[1])), training_data)
-            clf = NN([1, 2], regularizer = self.regularizer)
-            clf.feature = feature
-            clf.train(training, epochs=5, training_rate=self.learning_rate)
+            clf = WeakClassifier([1, 2], positive_regions, negative_regions, regularizer = self.regularizer)
+            clf.train(training, training_rate=self.learning_rate)
             return clf
 
         height, width = training_data[0][0].shape
@@ -82,33 +81,28 @@ class ViolaJones:
                             #print("%d classifiers trained" % len(classifiers))
                             return classifiers
                         #2 rectangle features
-                        immediate = RectangleRegion(i, j, w, h).compute_feature
-                        right = RectangleRegion(i+w, j, w, h).compute_feature
+                        immediate = RectangleRegion(i, j, w, h)
+                        right = RectangleRegion(i+w, j, w, h)
                         if i + 2 * w < width: #Horizontally Adjacent
-                            feature = lambda ii: right(ii) - immediate(ii)
-                            classifiers.append(create_weak(feature))
+                            classifiers.append(create_weak([right], [immediate]))
 
-                        bottom = RectangleRegion(i, j+h, w, h).compute_feature
+                        bottom = RectangleRegion(i, j+h, w, h)
                         if j + 2 * h < height: #Vertically Adjacent
-                            feature = lambda ii: abs(immediate(ii) - bottom(ii))
-                            classifiers.append(create_weak(feature))
+                            classifiers.append(create_weak([immediate], [bottom]))
                         
-                        right_2 = RectangleRegion(i+2*w, j, w, h).compute_feature
+                        right_2 = RectangleRegion(i+2*w, j, w, h)
                         #3 rectangle features
                         if i + 3 * w < width: #Horizontally Adjacent
-                            feature = lambda ii: right(ii) - immediate(ii) - right_2(ii)
-                            classifiers.append(create_weak(feature))
+                            classifiers.append(create_weak([right], [right_2, immediate]))
 
-                        bottom_2 = RectangleRegion(i, j+2*h, w, h).compute_feature
+                        bottom_2 = RectangleRegion(i, j+2*h, w, h)
                         if j + 3 * h < height: #Vertically Adjacent
-                            feature = lambda ii: bottom(ii) - immediate(ii) - bottom_2(ii)
-                            classifiers.append(create_weak(feature))
+                            classifiers.append(create_weak([bottom], [bottom_2, immediate]))
 
                         #4 rectangle features
-                        bottom_right = RectangleRegion(i+w, j+h, w, h).compute_feature
+                        bottom_right = RectangleRegion(i+w, j+h, w, h)
                         if i + 2 * w < width and j + 2 * h < height:
-                            feature = lambda ii: right(ii) + bottom(ii) - immediate(ii) - bottom_right(ii)
-                            classifiers.append(create_weak(feature))
+                            classifiers.append(create_weak([right, bottom], [immediate, bottom_right]))
 
                         j += 1
                     i += 1
@@ -127,7 +121,7 @@ class ViolaJones:
         for clf in classifiers:
             error, accuracy = 0, []
             for data, w in zip(training_data, weights):
-                correctness = abs(np.argmax(clf.classify(clf.feature(data[0]))) - np.argmax(data[1]))
+                correctness = abs(np.argmax(clf.classify(data[0])) - np.argmax(data[1]))
                 accuracy.append(correctness)
                 error += w * correctness
             if error < best_error:
@@ -142,8 +136,7 @@ class ViolaJones:
         total = 0
         ii = integral_image(image)
         for alpha, clf in zip(self.alphas, self.clfs):
-            feature = clf.feature(ii)
-            total += alpha * np.argmax(clf.classify(feature))
+            total += alpha * np.argmax(clf.classify(ii))
         return 1 if total >= 0.5 * sum(self.alphas) else 0
 
     def save(self, filename):
@@ -154,7 +147,23 @@ class ViolaJones:
     def load(filename):
         with open(filename+".pkl", 'r') as f:
             return pickle.load(f)
-               
+
+class WeakClassifier(NN):
+    def __init__(self, layer_dims, positive_regions, negative_regions, regularizer = 0):
+        NN.__init__(self, layer_dims, regularizer=regularizer)
+        self.positive_regions = positive_regions
+        self.negative_regions = negative_regions
+    
+    def train(self, training_data, batch_size=50, epochs = 5, training_rate = 0.01):
+        feature = lambda ii: sum([pos.compute_feature(ii) for pos in self.positive_regions]) - sum([neg.compute_feature(ii) for neg in self.negative_regions])
+        training = map(lambda data: (feature(data[0]), one_hot(2, data[1])), training_data)
+        return NN.train(self, training, batch_size=batch_size, epochs=epochs, training_rate=training_rate, test_data=None, verbose=False)
+
+    def classify(self, x):
+        feature = lambda ii: sum([pos.compute_feature(ii) for pos in self.positive_regions]) - sum([neg.compute_feature(ii) for neg in self.negative_regions])
+        x = feature(x)
+        return NN.classify(self, x) 
+
 class RectangleRegion:
     def __init__(self, x, y, width, height):
         #assert x >= 0 and y >= 0 and width > 0 and height > 0, "Invalid Dimensions"
@@ -212,17 +221,22 @@ if __name__ == "__main__":
     training, validation, test = load_data()
     training = zip(training[0], training[1])
     training = [(np.reshape(image, (28, 28)), label) for image, label in training if label == 1 or label == 0]
-    
-    pos_num, neg_num = 0, 0
-    for x, y in training:
-        if y == 1:
-            pos_num += 1
-        else:
-            neg_num += 1
-    clf = ViolaJones()
-    clf.train(training, pos_num, neg_num)
+        
+    try:
+        clf = ViolaJones.load("viola_jones")
+        print("Loaded classifier from file")
+    except Exception as e:
+        print("Failed to load classifier from file: %s" % str(e))
+        pos_num, neg_num = 0, 0
+        for x, y in training:
+            if y == 1:
+                pos_num += 1
+            else:
+                neg_num += 1
+        clf = ViolaJones()
+        clf.train(training, pos_num, neg_num)
 
-    #clf.save("viola_jones")
+        clf.save("viola_jones")
 
     correct = 0
     for x, y in training:
