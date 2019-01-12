@@ -1,6 +1,7 @@
 """
-A Python3 implementation of the Viola-Jones ensemble classification method described in 
+A Python implementation of the Viola-Jones ensemble classification method described in 
 Viola, Paul, and Michael Jones. "Rapid object detection using a boosted cascade of simple features." Computer Vision and Pattern Recognition, 2001. CVPR 2001. Proceedings of the 2001 IEEE Computer Society Conference on. Vol. 1. IEEE, 2001.
+Works in both Python2 and Python3
 """
 import numpy as np
 from neuralnetwork import NeuralNetwork as NN
@@ -10,6 +11,12 @@ import pickle
 
 class ViolaJones:
     def __init__(self, feature_num = 10, learning_rate=0.01, regularizer = 0):
+        """
+          Args:
+            feature_num: The number of weak classifiers which should be used
+            learning_rate: How fast the weak classifiers will learn
+            regularizer: whether or not the weak classifiers will be regularized
+        """
         self.feature_num = feature_num
         self.learning_rate = learning_rate
         self.regularizer = regularizer
@@ -132,7 +139,6 @@ class ViolaJones:
         """
         Classifies an image
         """
-        #assert len(self.clfs) == self.feature_num, "Classifier is not trained"
         total = 0
         ii = integral_image(image)
         for alpha, clf in zip(self.alphas, self.clfs):
@@ -140,11 +146,21 @@ class ViolaJones:
         return 1 if total >= 0.5 * sum(self.alphas) else 0
 
     def save(self, filename):
+        """
+        Saves the classifier to a pickle
+          Args:
+            filename: The name of the file (no file extension necessary)
+        """
         with open(filename+".pkl", 'w') as f:
             pickle.dump(self, f)
 
     @staticmethod
     def load(filename):
+        """
+        A static method which loads the classifier from a pickle
+          Args:
+            filename: The name of the file (no file extension necessary)
+        """
         with open(filename+".pkl", 'r') as f:
             return pickle.load(f)
 
@@ -166,7 +182,6 @@ class WeakClassifier(NN):
 
 class RectangleRegion:
     def __init__(self, x, y, width, height):
-        #assert x >= 0 and y >= 0 and width > 0 and height > 0, "Invalid Dimensions"
         self.x = x
         self.y = y
         self.width = width
@@ -182,8 +197,6 @@ class RectangleRegion:
             width: width of the rectangle
             height: height of the rectangle
         """
-        #assert self.y + self.height < len(ii), "Invalid Region for image"
-        #assert self.x + self.width < len(ii[0]), "Invalid Region for image"
         return ii[self.y+self.height][self.x+self.width] + ii[self.y][self.x] - (ii[self.y+self.height][self.x]+ii[self.y][self.x+self.width])
         
 def integral_image(image):
