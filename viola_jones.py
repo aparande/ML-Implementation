@@ -69,9 +69,11 @@ class ViolaJones:
                 total_neg += w
 
         classifiers = []
+        total_features = len(features)
         for positive_regions, negative_regions in features:
-            if len(classifiers) % 1000 == 0:
-                print("Trained %d classifiers" % len(classifiers))
+            if len(classifiers) % 10 == 0 and len(classifiers) != 0:
+                print("Trained %d classifiers out of %d" % (len(classifiers), total_features))
+                return classifiers
             feature = lambda ii: sum([pos.compute_feature(ii) for pos in positive_regions]) - sum([neg.compute_feature(ii) for neg in negative_regions])
             training = map(lambda data: (feature(data[0]), data[1]), training_data)
             training = sorted(zip(weights, training), key=lambda ex: ex[1][0])
@@ -159,6 +161,7 @@ class ViolaJones:
                 correctness = abs(clf.classify(data[0]) - data[1])
                 accuracy.append(correctness)
                 error += w * correctness
+            error = error / len(training_data)
             if error < best_error:
                 best_clf, best_error, best_accuracy = clf, error, accuracy
         return best_clf, best_error, best_accuracy
@@ -263,6 +266,7 @@ if __name__ == "__main__":
     training, validation, test = load_data()
     training = zip(training[0], training[1])
     training = [(np.reshape(image, (28, 28)), label) for image, label in training if label == 1 or label == 0]
+    training = training[0:1000]
         
     try:
         clf = ViolaJones.load("viola_jones")
@@ -278,7 +282,7 @@ if __name__ == "__main__":
         clf = ViolaJones(feature_num=2)
         clf.train(training, pos_num, neg_num)
 
-        #clf.save("viola_jones")
+        clf.save("viola_jones")
 
     correct = 0
     for x, y in training:
