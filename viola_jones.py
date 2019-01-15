@@ -37,6 +37,9 @@ class ViolaJones:
 
         print("Starting training")
         features = self.build_features(training_data[0][0].shape)
+        features = self.prune_features(features, training_data)
+        print("Selected %d potential features" % len(features))
+        return
 
         for t in range(self.feature_num):
             print("Choosing classifier #%d" % (t+1))
@@ -71,9 +74,8 @@ class ViolaJones:
         classifiers = []
         total_features = len(features)
         for positive_regions, negative_regions in features:
-            if len(classifiers) % 10 == 0 and len(classifiers) != 0:
+            if len(classifiers) % 1000 == 0 and len(classifiers) != 0:
                 print("Trained %d classifiers out of %d" % (len(classifiers), total_features))
-                return classifiers
             feature = lambda ii: sum([pos.compute_feature(ii) for pos in positive_regions]) - sum([neg.compute_feature(ii) for neg in negative_regions])
             training = map(lambda data: (feature(data[0]), data[1]), training_data)
             training = sorted(zip(weights, training), key=lambda ex: ex[1][0])
@@ -165,6 +167,19 @@ class ViolaJones:
             if error < best_error:
                 best_clf, best_error, best_accuracy = clf, error, accuracy
         return best_clf, best_error, best_accuracy
+    
+    def prune_features(self, features, training_data):
+        important_features = []
+        for positive_regions, negative_regions in features:
+            feature = lambda ii: sum([pos.compute_feature(ii) for pos in positive_regions]) - sum([neg.compute_feature(ii) for neg in negative_regions])
+            training = list(map(lambda data: feature(data[0]), training_data))
+            min_value = min(training)
+            max_value = max(training)
+            training = list(map(lambda x: (x - min_value)/(max_value-min_value), training))
+            average = np.mean(training)
+            if average > 0.75:
+                important_features.append((positive_regions, negative_regions))
+        return important_features
 
     def classify(self, image):
         """
