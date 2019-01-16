@@ -7,6 +7,7 @@ import numpy as np
 import math
 from mnist import load_data
 import pickle
+from sklearn.feature_selection import SelectPercentile, f_classif
 
 class ViolaJones:
     def __init__(self, feature_num = 10):
@@ -35,26 +36,35 @@ class ViolaJones:
             else:
                 weights[0][x] = 1.0 / (2 * neg_num)
 
-        print("Starting training")
+        print("Building features")
         features = self.build_features(training_data[0][0].shape)
-        features = self.prune_features(features, training_data)
-        print("Selected %d potential features" % len(features))
-        return
+        print("Applying features to training examples")
+        X, y = self.apply_features(features, training_data)
+        print("Selecting best features")
+        indices = SelectPercentile(f_classif, percentile=10).fit(X.T, y).get_support(indices=True)
+        X = X[indices]
+        features = features[indices]
+        print("Selected %d potential features" % len(X))
 
         for t in range(self.feature_num):
             print("Choosing classifier #%d" % (t+1))
             weights[t] = weights[t] / np.linalg.norm(weights[t])
-            weak_classifiers = self.train_weak(features, weights[t], training_data)
+            weak_classifiers = self.train_weak(X, y, features, weights[t])
             clf, error, accuracy = self.select_best(weak_classifiers, weights[t], training_data)
             beta = error / (1.0 - error)
             new_weights = np.zeros(weights[t].shape)
             for i in range(len(accuracy)):
-                new_weights[i] = weights[t][i] * (beta ** accuracy[i])
+                new_weights[i] = weights[t][i] * (beta ** (1 - accuracy[i]))
             weights = np.vstack((weights, new_weights))
-            self.alphas.append(math.log(1.0/beta))
+            alpha = math.log(1.0/beta)
+            self.alphas.append(alpha)
             self.clfs.append(clf)
+            print("Chose classifier: %s with accuracy: %f and alpha: %d" % (str(clf), len(accuracy) - sum(accuracy), alpha))
 
-    def train_weak(self, features, weights, training_data):
+        print("Alphas are: ", self.alphas)
+        print("Weights: ", weights)
+
+    def train_weak(self, X, y, features, weights):
         """
         Finds the optimal thresholds for each weak classifier given the current weights
           Args:
@@ -65,37 +75,36 @@ class ViolaJones:
             An array of weak classifiers
         """
         total_pos, total_neg = 0, 0
-        for w, ex in zip(weights, training_data):
-            if ex[1] == 1:
+        for w, label in zip(weights, y):
+            if label == 1:
                 total_pos += w
             else:
                 total_neg += w
 
         classifiers = []
-        total_features = len(features)
-        for positive_regions, negative_regions in features:
+        total_features = X.shape[0]
+        for index, feature in enumerate(X):
             if len(classifiers) % 1000 == 0 and len(classifiers) != 0:
                 print("Trained %d classifiers out of %d" % (len(classifiers), total_features))
-            feature = lambda ii: sum([pos.compute_feature(ii) for pos in positive_regions]) - sum([neg.compute_feature(ii) for neg in negative_regions])
-            training = map(lambda data: (feature(data[0]), data[1]), training_data)
-            training = sorted(zip(weights, training), key=lambda ex: ex[1][0])
+
+            applied_feature = sorted(zip(weights, feature, y), key=lambda x: x[1])
 
             pos_seen, neg_seen = 0, 0
             pos_weights, neg_weights = 0, 0
             min_error, best_feature, best_threshold, best_polarity = float('inf'), None, None, None
-            for w, ex in training:
-                if ex[1] == 1:
+            for w, f, label in applied_feature:
+                if label == 1:
                     pos_seen += 1
                     pos_weights += w
                 else:
                     neg_seen += 1
                     neg_weights += w
                 
-                error = min(neg_weights+total_pos-pos_weights, pos_weights+total_neg-neg_weights)
+                error = min(neg_weights + total_pos - pos_weights, pos_weights + total_neg - neg_weights)
                 if error < min_error:
                     min_error = error
-                    best_feature = (positive_regions, negative_regions)
-                    best_threshold = ex[0]
+                    best_feature = features[index]
+                    best_threshold = f
                     best_polarity = 1 if pos_seen < neg_seen else -1
             
             clf = WeakClassifier(best_feature[0], best_feature[1], best_threshold, best_polarity)
@@ -144,7 +153,7 @@ class ViolaJones:
 
                         j += 1
                     i += 1
-        return features
+        return np.array(features)
 
     def select_best(self, classifiers, weights, training_data):
         """
@@ -168,18 +177,15 @@ class ViolaJones:
                 best_clf, best_error, best_accuracy = clf, error, accuracy
         return best_clf, best_error, best_accuracy
     
-    def prune_features(self, features, training_data):
-        important_features = []
+    def apply_features(self, features, training_data):
+        X = np.zeros((len(features), len(training_data)))
+        y = np.array(map(lambda data: data[1], training_data))
+        i = 0
         for positive_regions, negative_regions in features:
             feature = lambda ii: sum([pos.compute_feature(ii) for pos in positive_regions]) - sum([neg.compute_feature(ii) for neg in negative_regions])
-            training = list(map(lambda data: feature(data[0]), training_data))
-            min_value = min(training)
-            max_value = max(training)
-            training = list(map(lambda x: (x - min_value)/(max_value-min_value), training))
-            average = np.mean(training)
-            if average > 0.75:
-                important_features.append((positive_regions, negative_regions))
-        return important_features
+            X[i] = list(map(lambda data: feature(data[0]), training_data))
+            i += 1
+        return X, y
 
     def classify(self, image):
         """
@@ -239,6 +245,9 @@ class WeakClassifier:
         """
         feature = feature = lambda ii: sum([pos.compute_feature(ii) for pos in self.positive_regions]) - sum([neg.compute_feature(ii) for neg in self.negative_regions])
         return 1 if self.polarity * feature(x) < self.polarity * self.threshold else 0
+    
+    def __str__(self):
+        return "Weak Clf (threshold=%d, polarity=%d, %s, %s" % (self.threshold, self.polarity, str(self.positive_regions), str(self.negative_regions))
 
 class RectangleRegion:
     def __init__(self, x, y, width, height):
@@ -258,6 +267,9 @@ class RectangleRegion:
             height: height of the rectangle
         """
         return ii[self.y+self.height][self.x+self.width] + ii[self.y][self.x] - (ii[self.y+self.height][self.x]+ii[self.y][self.x+self.width])
+
+    def __str__(self):
+        return "(x= %d, y= %d, width= %d, height= %d)" % (self.x, self.y, self.width, self.height)
         
 def integral_image(image):
     """
@@ -297,7 +309,7 @@ if __name__ == "__main__":
         clf = ViolaJones(feature_num=2)
         clf.train(training, pos_num, neg_num)
 
-        clf.save("viola_jones")
+        #clf.save("viola_jones")
 
     correct = 0
     for x, y in training:
