@@ -13,7 +13,7 @@ class ViolaJones:
     def __init__(self, T = 10):
         """
           Args:
-            feature_num: The number of weak classifiers which should be used
+            T: The number of weak classifiers which should be used
         """
         self.T = T
         self.alphas = []
