@@ -5,7 +5,6 @@ Works in both Python2 and Python3
 """
 import numpy as np
 import math
-from mnist import load_data
 import pickle
 from sklearn.feature_selection import SelectPercentile, f_classif
 
@@ -168,7 +167,7 @@ class ViolaJones:
                 correctness = abs(clf.classify(data[0]) - data[1])
                 accuracy.append(correctness)
                 error += w * correctness
-            #error = error / len(training_data)
+            error = error / len(training_data)
             if error < best_error:
                 best_clf, best_error, best_accuracy = clf, error, accuracy
         return best_clf, best_error, best_accuracy
@@ -184,7 +183,7 @@ class ViolaJones:
             y: A numpy array of shape len(training_data). The ith element is the classification of the ith training example
         """
         X = np.zeros((len(features), len(training_data)))
-        y = np.array(map(lambda data: data[1], training_data))
+        y = np.array(list(map(lambda data: data[1], training_data)))
         i = 0
         for positive_regions, negative_regions in features:
             feature = lambda ii: sum([pos.compute_feature(ii) for pos in positive_regions]) - sum([neg.compute_feature(ii) for neg in negative_regions])
@@ -212,7 +211,7 @@ class ViolaJones:
           Args:
             filename: The name of the file (no file extension necessary)
         """
-        with open(filename+".pkl", 'w') as f:
+        with open(filename+".pkl", 'wb') as f:
             pickle.dump(self, f)
 
     @staticmethod
@@ -222,7 +221,7 @@ class ViolaJones:
           Args:
             filename: The name of the file (no file extension necessary)
         """
-        with open(filename+".pkl", 'r') as f:
+        with open(filename+".pkl", 'rb') as f:
             return pickle.load(f)
 
 class WeakClassifier:
