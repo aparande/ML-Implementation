@@ -19,19 +19,20 @@ class ViolaJones:
         self.alphas = []
         self.clfs = []
 
-    def train(self, training_data, pos_num, neg_num):
+    def train(self, training, pos_num, neg_num):
         """
         Trains the Viola Jones classifier on a set of images (numpy arrays of shape (m, n))
           Args:
-            training_data: An array of tuples. The first element is the numpy array of shape (m, n) representing the image. The second element is its classification (1 or 0)
+            training: An array of tuples. The first element is the numpy array of shape (m, n) representing the image. The second element is its classification (1 or 0)
             pos_num: the number of positive samples
             neg_num: the number of negative samples
         """
-        weights = np.zeros(len(training_data))
+        weights = np.zeros(len(training))
+        training_data = []
         print("Computing integral images")
-        for x in range(len(training_data)):
-            training_data[x] = (integral_image(training_data[x][0]), training_data[x][1])
-            if training_data[x][1] == 1:
+        for x in range(len(training)):
+            training_data.append((integral_image(training[x][0]), training[x][1]))
+            if training[x][1] == 1:
                 weights[x] = 1.0 / (2 * pos_num)
             else:
                 weights[x] = 1.0 / (2 * neg_num)
